@@ -1,0 +1,135 @@
+# Install libraries
+
+!pip install librosa scikit-learn
+
+
+# Import libraries
+
+import os
+import numpy as np
+import librosa
+import librosa.display
+import matplotlib.pyplot as plt
+
+from google.colab import drive
+from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import LabelEncoder
+from sklearn.linear_model import LogisticRegression
+from sklearn.metrics import accuracy_score
+
+
+# Mount Google Drive
+
+drive.mount('/content/drive')
+
+
+# Set your data path
+
+DATA_DIR = "/content/drive/MyDrive/speech_dataset"
+
+
+# Feature extraction function (MFCC)
+
+def extract_features(file_path):
+    y, sr = librosa.load(file_path, sr=None)
+    mfccs = librosa.feature.mfcc(y=y, sr=sr, n_mfcc=13)
+    mfccs_mean = np.mean(mfccs.T, axis=0)
+    return mfccs_mean
+
+
+# Load data: loop over all speakers
+
+features = []
+labels = []
+
+for speaker in os.listdir(DATA_DIR):
+    speaker_folder = os.path.join(DATA_DIR, speaker)
+    if os.path.isdir(speaker_folder):
+        for file_name in os.listdir(speaker_folder):
+            if file_name.endswith(".wav"):
+                file_path = os.path.join(speaker_folder, file_name)
+                print(f"Processing: {file_path}")
+                feature = extract_features(file_path)
+                features.append(feature)
+                labels.append(speaker)
+
+X = np.array(features)
+y = np.array(labels)
+
+print(f"✅ Total samples: {len(X)}")
+print(f"✅ Feature shape: {X.shape}")
+
+
+# Encode labels
+
+le = LabelEncoder()
+y_encoded = le.fit_transform(y)
+
+
+# Split train & test
+
+X_train, X_test, y_train, y_test = train_test_split(
+    X, y_encoded, test_size=0.2, random_state=42
+)
+
+print(f"✅ Training samples: {len(X_train)}")
+print(f"✅ Test samples: {len(X_test)}")
+
+
+# Train model
+
+model = LogisticRegression(max_iter=1000)
+model.fit(X_train, y_train)
+
+
+# Evaluate
+
+y_pred = model.predict(X_test)
+accuracy = accuracy_score(y_test, y_pred)
+
+print(f"✅ Test Accuracy: {accuracy * 100:.2f}%")
+
+
+# Predict new audio
+
+def predict_speaker(audio_file):
+    feature = extract_features(audio_file).reshape(1, -1)
+    prediction = model.predict(feature)
+    speaker_name = le.inverse_transform(prediction)
+    return speaker_name[0]
+
+# Example usage:
+print(predict_speaker("/content/drive/MyDrive/speech_dataset/test 1.wav"))
+
+
+# Visualize: waveform, spectrogram, MFCC
+
+def plot_all_audio_features(file_path):
+    y, sr = librosa.load(file_path, sr=None)
+
+    # Waveform
+    plt.figure(figsize=(14, 4))
+    librosa.display.waveshow(y, sr=sr)
+    plt.title(f'Waveform: {os.path.basename(file_path)}')
+    plt.xlabel('Time (s)')
+    plt.ylabel('Amplitude')
+    plt.show()
+
+    # Spectrogram
+    D = librosa.amplitude_to_db(np.abs(librosa.stft(y)), ref=np.max)
+    plt.figure(figsize=(14, 4))
+    librosa.display.specshow(D, sr=sr, x_axis='time', y_axis='linear')
+    plt.colorbar(format='%+2.0f dB')
+    plt.title(f'Spectrogram (STFT): {os.path.basename(file_path)}')
+    plt.show()
+
+    # MFCC
+    mfccs = librosa.feature.mfcc(y=y, sr=sr, n_mfcc=13)
+    plt.figure(figsize=(14, 4))
+    librosa.display.specshow(mfccs, sr=sr, x_axis='time')
+    plt.colorbar(label='MFCC Coefficients')
+    plt.title(f'MFCC: {os.path.basename(file_path)}')
+    plt.show()
+
+# Example:
+plot_all_audio_features("/content/drive/MyDrive/speech_dataset/test 1.wav")
